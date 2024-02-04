@@ -1,0 +1,208 @@
+version: "3.6"
+
+# NB:
+# docker-compose automagically loads environment variables defined in an `.env` file
+# router will route ports: [ 80, 53, 67 ]
+
+# TODO:
+# - does pihole require the default network?
+
+volumes:
+  db:
+  nextcloud:
+  syncthing-config:
+  onedrive-config:
+  pcloud-cache:
+  # proxy
+  proxy-certs:
+  proxy-conf:
+  proxy-dhparam:
+  proxy-html:
+  proxy-vhost:
+  # proxy-acme
+  acme-acme:
+
+services:
+
+  pihole:
+    container_name: pihole
+    image: pihole/pihole:2024.01.0
+    restart: unless-stopped
+    # For DHCP it is recommended to remove these ports and instead add: network_mode: "host"
+    ports:
+      - "53:53/tcp"
+      - "53:53/udp"
+      - "67:67/udp" # Only required if you are using Pi-hole as your DHCP server
+      # - "80:80/tcp"
+    environment:
+      - TZ=Australia/Sydney
+      - WEBPASSWORD_FILE=/run/secrets/pihole_password
+      - PORT=80
+      - VIRTUAL_PORT=80
+      - VIRTUAL_HOST="pihole.${DOMAIN}"
+      - LETSENCRYPT_HOST="pihole.${DOMAIN}"
+      - LETSENCRYPT_EMAIL=${EMAIL}
+    # Volumes store your data between container upgrades
+    volumes:
+      - "~/pihole/etc-pihole:/etc/pihole"
+      - "~/pihole/etc-dnsmasq.d:/etc/dnsmasq.d"
+    secrets:
+      - pihole_password
+    #   https://github.com/pi-hole/docker-pi-hole#note-on-capabilities
+    # cap_add:
+    #  - NET_ADMIN # Required if you are using Pi-hole as your DHCP server, else not needed
+    networks:
+      - proxy-tier
+      - default
+
+  db:
+    container_name: db
+    image: ghcr.io/linuxserver/mariadb
+    restart: always
+    volumes:
+      - db:/config
+    # environment:
+    #   - MYSQL_ROOT_PASSWORD=
+    # ports:
+    #   - 3306:3306
+
+  proxy:
+    container_name: proxy
+    image: nginxproxy/nginx-proxy:latest
+    restart: always
+    volumes:
+      - proxy-html:/usr/share/nginx/html
+      - proxy-dhparam:/etc/nginx/dhparam
+      - proxy-vhost:/etc/nginx/vhost.d
+      - proxy-certs:/etc/nginx/certs
+      - proxy-conf:/etc/nginx/conf.d
+      - /var/run/docker.sock:/tmp/docker.sock:ro
+    networks:
+      - proxy-tier
+    ports:
+      - 80:80
+      - 443:443
+
+  acme:
+    container_name: proxy-acme
+    image: nginxproxy/acme-companion:latest
+    restart: always
+    depends_on:
+      - proxy
+    volumes_from:
+      - proxy
+    volumes:
+      - acme-acme:/etc/acme.sh
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      NGINX_PROXY_CONTAINER: proxy
+      DEFAULT_EMAIL: ${EMAIL}
+    networks:
+      - proxy-tier
+
+  nextcloud:
+    container_name: nextcloud
+    image: nextcloud:27-apache
+    restart: always
+    expose:
+      - 80
+    environment:
+      - PORT=80
+      - VIRTUAL_PORT=80
+      - VIRTUAL_HOST=nc.${DOMAIN}
+      - LETSENCRYPT_HOST=nc.${DOMAIN}
+      - LETSENCRYPT_EMAIL=${EMAIL}
+      - OVERWRITEPROTOCOL=https
+      - MYSQL_HOST=db
+      - MYSQL_USER=nextclouduser
+      - MYSQL_PASSWORD_FILE=/run/secrets/db_nexctloud_password
+      - MYSQL_DATABASE=nextcloud
+    volumes:
+      - nextcloud:/var/www/html
+    depends_on:
+      - db
+    networks:
+      - proxy-tier
+      - default
+    secrets:
+      - db_nexctloud_password
+
+  wordpress:
+    container_name: wordpress
+    image: wordpress:6.4.2
+    restart: always
+    environment:
+      - PORT=80
+      - VIRTUAL_PORT=80
+      - VIRTUAL_HOST=${DOMAIN}
+      - LETSENCRYPT_HOST=${DOMAIN}
+      - LETSENCRYPT_EMAIL=${EMAIL}
+      - WORDPRESS_DB_HOST=db
+      - WORDPRESS_DB_USER=wordpressuser
+      - WORDPRESS_DB_PASSWORD_FILE=/run/secrets/db_wordpress_password
+      - WORDPRESS_DB_NAME=wordpress
+    depends_on:
+      - db
+    networks:
+      - proxy-tier
+      - default
+    secrets:
+      - db_wordpress_password
+
+  pcloud:
+    container_name: pcloud
+    image: jloyola/pcloudcc:0.1.2
+    restart: unless-stopped
+    stdin_open: true
+    tty: true
+    volumes:
+      - type: volume
+        source: pcloud-cache
+        target: /home/pcloud/.pcloud
+      - type: bind
+        bind:
+          propagation: shared
+        source: ~/pclouddrive
+        target: /pCloudDrive
+    devices:
+      - "/dev/fuse:/dev/fuse"
+    cap_add:
+      - SYS_ADMIN
+    environment:
+      - PCLOUD_USERNAME=${EMAIL}
+      - PCLOUD_UID=1000
+      - PCLOUD_GID=1000
+
+  # syncthing:
+  #   container_name: syncthing
+  #   image: syncthing/syncthing:1.27.2
+  #   hostname: syncthing.${DOMAIN}
+  #   environment:
+  #     - VIRTUAL_HOST=syncthing.${DOMAIN}
+  #     - VIRTUAL_PORT=8384
+  #     - LETSENCRYPT_HOST=syncthing.${DOMAIN}
+  #     - LETSENCRYPT_EMAIL=${EMAIL}
+  #     - PUID=1000
+  #     - PGID=1000
+  #     - TZ=Etc/UTC
+  #   volumes:
+  #     - syncthing-config:/config
+  #     - ~/syncthing-sync:/var/syncthing
+  #   ports:
+  #     - 22000:22000/tcp   # TCP file transfers
+  #     - 22000:22000/udp   # QUIC file transfers
+  #     - 21027:21027/udp   # Receive local discovery broadcasts
+  #   restart: unless-stopped
+  #   networks:
+  #     - proxy-tier
+
+networks:
+  proxy-tier:
+
+secrets:
+  db_nexctloud_password:
+    file: secrets/db_nexctloud_password
+  db_wordpress_password:
+    file: secrets/db_wordpress_password
+  pihole_password:
+    file: secrets/pihole_password
