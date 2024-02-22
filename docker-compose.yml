@@ -10,6 +10,7 @@ version: "3.6"
 volumes:
   db:
   nextcloud:
+  wordpress:
   syncthing-config:
   onedrive-config:
   pcloud-cache:
@@ -141,6 +142,8 @@ services:
       - WORDPRESS_DB_USER=wordpressuser
       - WORDPRESS_DB_PASSWORD_FILE=/run/secrets/db_wordpress_password
       - WORDPRESS_DB_NAME=wordpress
+    volumes:
+      - wordpress:/var/www/html
     depends_on:
       - db
     networks:

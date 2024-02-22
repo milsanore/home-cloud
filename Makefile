@@ -19,20 +19,20 @@ help: Makefile
 .PHONY: up
 up:
 	$(call pp,starting infrastructure...)
-	docker compose up -d proxy acme db resume wordpress nextcloud
+	docker compose -p home-cloud up -d proxy acme db wordpress nextcloud
 
 ## stop: 🟠
 .PHONY: stop
 stop:
 	$(call pp,stopping infrastructure...)
-	docker compose stop
+	docker compose -p home-cloud stop
 
 ## down: 🔴 DELETE infrastructure
 .PHONY: down
 down:
 	@echo -n "Are you sure? [y/N] " && read ans && [ $${ans:-N} = y ]
 	$(call pp,DELETING infrastructure...)
-	docker compose down
+	docker compose -p home-cloud down
 
 ## backup: 🟢 backup volumes and associated compose
 .PHONY: backup
