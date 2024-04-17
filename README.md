@@ -80,7 +80,7 @@ flowchart
 
 ### 5. CREDENTIALS
 populate the following files with credentials:
-- ./secrets/db_nexctloud_password
+- ./secrets/db_nextcloud_password
 - ./secrets/db_wordpress_password
 - ./secrets/pihole_password
 

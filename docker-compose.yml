@@ -62,8 +62,6 @@ services:
     restart: always
     volumes:
       - db:/config
-    # environment:
-    #   - MYSQL_ROOT_PASSWORD=
     # ports:
     #   - 3306:3306
 
@@ -116,7 +114,7 @@ services:
       - OVERWRITEPROTOCOL=https
       - MYSQL_HOST=db
       - MYSQL_USER=nextclouduser
-      - MYSQL_PASSWORD_FILE=/run/secrets/db_nexctloud_password
+      - MYSQL_PASSWORD_FILE=/run/secrets/db_nextcloud_password
       - MYSQL_DATABASE=nextcloud
     volumes:
       - nextcloud:/var/www/html
@@ -126,7 +124,7 @@ services:
       - proxy-tier
       - default
     secrets:
-      - db_nexctloud_password
+      - db_nextcloud_password
 
   wordpress:
     container_name: wordpress
@@ -203,8 +201,8 @@ networks:
   proxy-tier:
 
 secrets:
-  db_nexctloud_password:
-    file: secrets/db_nexctloud_password
+  db_nextcloud_password:
+    file: secrets/db_nextcloud_password
   db_wordpress_password:
     file: secrets/db_wordpress_password
   pihole_password:
