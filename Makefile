@@ -19,7 +19,17 @@ help: Makefile
 .PHONY: up
 up:
 	$(call pp,starting infrastructure...)
-	docker compose -p home-cloud up -d proxy acme db wordpress nextcloud
+	docker compose -p home-cloud up -d \
+		proxy \
+		acme \
+		pihole \
+		db \
+		nextcloud \
+		wordpress \
+		samba \
+		wireguard \
+		wireguard-ui \
+		qbittorrent
 
 ## stop: 🟠
 .PHONY: stop
