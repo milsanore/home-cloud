@@ -13,7 +13,7 @@
 4. [BACKUP](#backup)
 5. [UPGRADE](#upgrade)
 6. [CLOUD STORAGE](#cloud-storage)
-6. [TODO](#todo)
+7. [TODO](#todo)
 
 
 ## PREREQUISITES <a name="prerequisites"></a>
@@ -59,22 +59,23 @@ flowchart
 - nextcloud & wordpress need database access, so configure db users first
 - we need a root user, and then one user per service
 
-1. configure a **root** password for your db by setting the `MYSQL_ROOT_PASSWORD` environment variable in the "db" container in `docker-compose.yaml`
+1. configure a **root** password for your db by setting `MYSQL_ROOT_PASSWORD` in `.env` (see [CONFIG](#config))
+  - it is only used when the db is first initialised, and is never committed
 2. start the database container:
-  - `docker compose up db`
-2. connect to the DB, for example:
+  - `docker compose -p home-cloud up -d db`
+3. connect to the DB, for example:
   - remote into the DB container: `docker exec -it db sh`
   - then connect to mysql: `mysql -u root -p`
 4. create the nextcloud DB user:
-  - `CREATE USER 'netxclouduser'@'localhost' IDENTIFIED BY '1234';`   <== change password
-  - `GRANT ALL PRIVILEGES ON nextcloud.* To 'netxclouduser'@'%';`
+  - `CREATE USER 'nextclouduser'@'%' IDENTIFIED BY '1234';`   <== change password
+  - `GRANT ALL PRIVILEGES ON nextcloud.* To 'nextclouduser'@'%';`
   - `FLUSH PRIVILEGES;`
 5. create the wordpress DB user:
-  - `CREATE USER 'wordpressuser'@'localhost' IDENTIFIED BY '1234';`   <== change password
+  - `CREATE USER 'wordpressuser'@'%' IDENTIFIED BY '1234';`   <== change password
   - `GRANT ALL PRIVILEGES ON wordpress.* To 'wordpressuser'@'%';`
   - `FLUSH PRIVILEGES;`
 
-### 4. CONFIG
+### 4. CONFIG <a name="config"></a>
 - copy `.env.example` to `.env`
 - populate `.env`
 
@@ -82,10 +83,9 @@ flowchart
 populate the following files with credentials:
 - ./secrets/db_nextcloud_password
 - ./secrets/db_wordpress_password
-- ./secrets/pihole_password
 
 ### 6. GO GO GO 🏃‍♂️
-- start everything with `make up`
+- start everything with `make start`
 
 
 ## THE SERVICES <a name="the-services"></a>
@@ -105,21 +105,17 @@ populate the following files with credentials:
 - takes the top-level domain
 - from there you can use wordpress to make a nice homepage
 
-### 4. PIHOLE 🛑
-- https://pihole.yourwebsite.com
-- ad-blocking DNS (useful for iphones)
-
-### 5. REVERSE-PROXY 🚦
+### 4. REVERSE-PROXY 🚦
 - container: `proxy` 
 - simplifies hosting multiple websites on one server
 - e.g. nextcloud & wordpress
 
-### 6. LETSENCRYPT 🔐
+### 5. LETSENCRYPT 🔐
 - container: `proxy-acme`
 - automatically configures HTTPS for all sites
 - (auto-generates & auto-updates TLS certificates)
 
-### 7. PCLOUD & SYNCTHING 🔄
+### 6. PCLOUD & SYNCTHING 🔄
 - TODO
 - AIM: sync a pcloud vault on phone to cloud storage (pcloud, in this case)
 - a ghetto version of "obsidian sync", i.e. syncthing acts as a relay
@@ -130,22 +126,29 @@ populate the following files with credentials:
 - the containers are stateless, they can be rebuilt
 - however the volumes are stateful (e.g. the DB), and a backup is a good idea
 - inspiration: https://stackoverflow.com/questions/45714456/how-to-migrate-docker-volume-between-hosts 
-- copy volume to local storage
-  - `make backup`
-- then copy it to another host and start with e.g.
-  - `docker run -v ./LOCAL_FOLDER:/MOUNT_POINT_OF_VOLUME some_image`
-- TODO: store backups on cloud storage
+
+- `make backup` stops everything, saves each volume as a tarball (plus `docker-compose.yml`, `.env` and `secrets/`) to `./backups/<timestamp>/`, then restarts everything
+- `make restore BACKUP=./backups/<timestamp>` recreates the volumes from a backup. it refuses to overwrite existing volumes
+- the backups contain credentials in plain text, so keep their file permissions strict
+
+### MIGRATING TO A NEW MACHINE
+1. on the old machine, run `make backup`
+2. sanity check that the db tarball isn't empty: `tar -tzf backups/<timestamp>/db.tar.gz | head`
+3. copy the `backups/<timestamp>/` folder to the new machine, and put `.env` and `secrets/` from it back in the repo root
+4. on the new machine, run `make restore BACKUP=./backups/<timestamp>`, then `make start`
+
 
 ## UPGRADE <a name="upgrade"></a>
 
 ### MAJOR UPGRADE
-- all containers are version-pinned (i.e. never "latest")
+- pin container versions (i.e. avoid "latest"). `proxy` and `acme` are still on "latest"
+- `db` is pinned to the mariadb version its data was created with. never jump it straight to "latest"
 - when upgrading, increment services' major versions +1 at a time
 - increment the version, then restart the container
 
 ### MINOR UPGRADE
-- `docker-compose pull`
-- `docker-compose up -d --remove-orphans`
+- `docker compose -p home-cloud pull`
+- `docker compose -p home-cloud up -d --remove-orphans`
 - `docker image prune`
 
 
