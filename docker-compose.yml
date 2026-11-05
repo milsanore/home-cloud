@@ -66,7 +66,7 @@ services:
 
   nextcloud:
     container_name: nextcloud
-    image: nextcloud:27-apache
+    image: nextcloud:34-apache
     restart: always
     environment:
       - PORT=80
@@ -79,6 +79,10 @@ services:
       - MYSQL_USER=nextclouduser
       - MYSQL_PASSWORD_FILE=/run/secrets/db_nextcloud_password
       - MYSQL_DATABASE=nextcloud
+      # only used for the automatic install on an empty volume
+      - NEXTCLOUD_ADMIN_USER=miki
+      - NEXTCLOUD_ADMIN_PASSWORD_FILE=/run/secrets/nextcloud_admin_password
+      - NEXTCLOUD_TRUSTED_DOMAINS=nc.${DOMAIN}
     volumes:
       - nextcloud:/var/www/html
     depends_on:
@@ -89,6 +93,7 @@ services:
       - default
     secrets:
       - db_nextcloud_password
+      - nextcloud_admin_password
 
   wordpress:
     container_name: wordpress
@@ -123,3 +128,5 @@ secrets:
     file: secrets/db_nextcloud_password
   db_wordpress_password:
     file: secrets/db_wordpress_password
+  nextcloud_admin_password:
+    file: secrets/nextcloud_admin_password

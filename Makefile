@@ -52,7 +52,7 @@ backup:
 	$(call pp,stopping infrastructure for a consistent backup...)
 	docker compose -p $(PROJECT) stop
 	$(call pp,backing up to $(BACKUP_DIR)...)
-	mkdir -p $(BACKUP_DIR)
+	mkdir -p -m 700 $(BACKUP_DIR)
 	cp -a docker-compose.yml .env secrets $(BACKUP_DIR)/
 	@failed=0; \
 	for v in $(VOLUMES); do \

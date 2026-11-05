@@ -84,6 +84,14 @@ populate the following files with credentials:
 - ./secrets/db_nextcloud_password
 - ./secrets/db_wordpress_password
 
+compose mounts these files into the containers with their host ownership and permissions, and both containers read them as `www-data` (uid 33). lock them down so that only `www-data` and you can read them (you need read access for `make backup`):
+```sh
+chmod 700 secrets
+sudo chown 33:$(id -gn) secrets/db_nextcloud_password secrets/db_wordpress_password
+chmod 440 secrets/db_nextcloud_password secrets/db_wordpress_password
+```
+if they're not readable by uid 33, wordpress shows "Error establishing a database connection" and logs `file_get_contents(/run/secrets/...): Permission denied`
+
 ### 6. GO GO GO 🏃‍♂️
 - start everything with `make start`
 
@@ -129,12 +137,14 @@ populate the following files with credentials:
 
 - `make backup` stops everything, saves each volume as a tarball (plus `docker-compose.yml`, `.env` and `secrets/`) to `./backups/<timestamp>/`, then restarts everything
 - `make restore BACKUP=./backups/<timestamp>` recreates the volumes from a backup. it refuses to overwrite existing volumes
-- the backups contain credentials in plain text, so keep their file permissions strict
+- the backups contain credentials in plain text. each backup folder is created with mode `700` (only you can open it), so keep it that way when you copy it elsewhere
 
 ### MIGRATING TO A NEW MACHINE
 1. on the old machine, run `make backup`
 2. sanity check that the db tarball isn't empty: `tar -tzf backups/<timestamp>/db.tar.gz | head`
 3. copy the `backups/<timestamp>/` folder to the new machine, and put `.env` and `secrets/` from it back in the repo root
+  - check that every tarball survived the copy: `for f in backups/<timestamp>/*.tar.gz; do gzip -t "$f" || echo "CORRUPT: $f"; done`
+  - re-apply the secret file ownership/permissions from [CREDENTIALS](#5-credentials) (copying doesn't preserve the owner)
 4. on the new machine, run `make restore BACKUP=./backups/<timestamp>`, then `make start`
 
 
