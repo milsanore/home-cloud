@@ -3,7 +3,9 @@
 # router will route ports: [ 80, 443 ]
 
 volumes:
+  # old mariadb 10.5 (linuxserver) data, kept for rollback - no longer mounted
   db:
+  mariadb:
   nextcloud:
   wordpress:
   # proxy
@@ -53,20 +55,31 @@ services:
 
   db:
     container_name: db
-    # pinned to the version the data was created with (see README: UPGRADE)
-    image: ghcr.io/linuxserver/mariadb:10.5.17
+    # LTS series; follows patch releases on pull (see README: UPGRADE)
+    image: mariadb:12.3
     restart: always
+    # the pi has ~1GB RAM: cap the innodb cache (default 128M)
+    command: --innodb-buffer-pool-size=64M
     environment:
       # only used when the db is first initialised
-      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD:-}
+      - MARIADB_ROOT_PASSWORD_FILE=/run/secrets/db_root_password
+      # run mariadb-upgrade automatically after a version bump
+      - MARIADB_AUTO_UPGRADE=1
     volumes:
-      - db:/config
+      - mariadb:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    secrets:
+      - db_root_password
     # ports:
     #   - 3306:3306
 
   nextcloud:
     container_name: nextcloud
-    image: nextcloud:34-apache
+    image: nextcloud:35-apache
     restart: always
     environment:
       - PORT=80
@@ -97,7 +110,8 @@ services:
 
   wordpress:
     container_name: wordpress
-    image: wordpress:6.4.2
+    # PHP + apache only: the wordpress code lives in the volume and updates itself
+    image: wordpress:php8.4-apache
     restart: always
     environment:
       - PORT=80
@@ -124,6 +138,8 @@ networks:
   proxy-tier:
 
 secrets:
+  db_root_password:
+    file: secrets/db_root_password
   db_nextcloud_password:
     file: secrets/db_nextcloud_password
   db_wordpress_password:

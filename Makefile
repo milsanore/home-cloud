@@ -4,7 +4,7 @@ SHELL:=/bin/bash
 NOW:=$(shell date -u +%Y-%m-%dT%H%M%SZ)
 PROJECT:=home-cloud
 # named volumes used by running services (compose prefixes them with "$(PROJECT)_")
-VOLUMES:=db nextcloud wordpress \
+VOLUMES:=mariadb nextcloud wordpress \
 	proxy-certs proxy-conf proxy-dhparam proxy-html proxy-vhost acme-acme
 # GNU tar, multi-arch (works on the raspberry pi)
 TAR_IMAGE:=debian:bookworm-slim
