@@ -17,19 +17,44 @@ volumes:
 
 services:
 
+  # read-only docker API for the internet-facing proxy (instead of the raw socket)
+  socket-proxy:
+    container_name: socket-proxy
+    image: tecnativa/docker-socket-proxy:latest
+    restart: always
+    environment:
+      - CONTAINERS=1
+      - NETWORKS=1
+      - EVENTS=1
+      - INFO=1
+      - POST=0
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - socket-proxy
+
   proxy:
     container_name: proxy
     image: nginxproxy/nginx-proxy:latest
     restart: always
+    depends_on:
+      - socket-proxy
+    environment:
+      DOCKER_HOST: tcp://socket-proxy:2375
+      # nothing sits in front of us (the router only NATs): don't pass client-supplied X-Forwarded-* on
+      TRUST_DOWNSTREAM_PROXY: "false"
     volumes:
       - proxy-certs:/etc/nginx/certs
       - proxy-conf:/etc/nginx/conf.d
       - proxy-dhparam:/etc/nginx/dhparam
       - proxy-html:/usr/share/nginx/html
       - proxy-vhost:/etc/nginx/vhost.d
-      - /var/run/docker.sock:/tmp/docker.sock:ro
+      # hardening, tracked in git
+      - ./config/nginx/conf.d/00-security.conf:/etc/nginx/conf.d/00-security.conf:ro
+      - ./config/nginx/vhost.d/mils.dev:/etc/nginx/vhost.d/mils.dev:ro
     networks:
       - proxy-tier
+      - socket-proxy
     ports:
       - 80:80
       - 443:443
@@ -44,6 +69,7 @@ services:
       - proxy
     volumes:
       - acme-acme:/etc/acme.sh
+      # acme-companion needs exec/kill on the proxy container, so a socket proxy would not reduce its power
       - /var/run/docker.sock:/var/run/docker.sock:ro
     environment:
       NGINX_PROXY_CONTAINER: proxy
@@ -57,10 +83,11 @@ services:
     image: mariadb:12.3
     restart: always
     # the pi has ~1GB RAM: cap the innodb cache (default 128M)
-    command: --innodb-buffer-pool-size=64M
+    command: --innodb-buffer-pool-size=64M --local-infile=0
     environment:
       # only used when the db is first initialised
       - MARIADB_ROOT_PASSWORD_FILE=/run/secrets/db_root_password
+      - MARIADB_ROOT_HOST=localhost
       # run mariadb-upgrade automatically after a version bump
       - MARIADB_AUTO_UPGRADE=1
     volumes:
@@ -86,6 +113,9 @@ services:
       - LETSENCRYPT_HOST=nc.${DOMAIN}
       - LETSENCRYPT_EMAIL=${EMAIL}
       - OVERWRITEPROTOCOL=https
+      # requests arrive via the proxy on proxy-tier: trust its X-Forwarded-For for the real client ip
+      - TRUSTED_PROXIES=172.18.0.0/16
+      - FORWARDED_FOR_HEADERS=HTTP_X_FORWARDED_FOR
       - MYSQL_HOST=db
       - MYSQL_USER=nextclouduser
       - MYSQL_PASSWORD_FILE=/run/secrets/db_nextcloud_password
@@ -121,8 +151,12 @@ services:
       - WORDPRESS_DB_USER=wordpressuser
       - WORDPRESS_DB_PASSWORD_FILE=/run/secrets/db_wordpress_password
       - WORDPRESS_DB_NAME=wordpress
+      # no theme/plugin code editor in wp-admin
+      - WORDPRESS_CONFIG_EXTRA=define('DISALLOW_FILE_EDIT', true);
     volumes:
       - wordpress:/var/www/html
+      # hardening, tracked in git
+      - ./config/wordpress/mu-plugins/hardening.php:/var/www/html/wp-content/mu-plugins/hardening.php:ro
     depends_on:
       - db
       # - proxy-acme
@@ -134,6 +168,8 @@ services:
 
 networks:
   proxy-tier:
+  socket-proxy:
+    internal: true
 
 secrets:
   db_root_password:

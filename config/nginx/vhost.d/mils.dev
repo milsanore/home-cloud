@@ -1,0 +1,16 @@
+# included by nginx-proxy in the https server block for mils.dev
+
+# XML-RPC: only used for brute force (system.multicall) and pingback abuse
+location = /xmlrpc.php { return 403; }
+
+# version fingerprinting
+location = /readme.html { return 404; }
+location = /license.txt { return 404; }
+
+# throttle login attempts per client ip: 10/min, short burst allowed
+location = /wp-login.php {
+    limit_req zone=wp_login burst=5 nodelay;
+    limit_req_status 429;
+    proxy_pass http://mils.dev;
+    set $upstream_keepalive true;
+}

@@ -26,6 +26,7 @@ help: Makefile
 start:
 	$(call pp,starting infrastructure...)
 	docker compose -p $(PROJECT) up -d \
+		socket-proxy \
 		proxy \
 		acme \
 		db \
@@ -94,4 +95,31 @@ restore:
 			-v $(PROJECT)_$$v:/data \
 			-v $(abspath $(BACKUP)):/backup:ro \
 			$(TAR_IMAGE) tar --numeric-owner -C /data -xzf /backup/$$v.tar.gz || exit 1; \
+	done
+
+## update: ⬆️  backup, pull newer images, recreate changed containers, update nextcloud apps (weekly via cron)
+.PHONY: update
+update:
+	$(MAKE) backup BACKUP_DIR=$(abspath ./backups/auto-$(NOW))
+	$(call pp,pulling images...)
+	docker compose -p $(PROJECT) pull
+	$(call pp,recreating changed containers...)
+	docker compose -p $(PROJECT) up -d --wait
+	$(call pp,waiting for nextcloud to finish any upgrade...)
+	@for i in $$(seq 1 60); do \
+		docker exec -u www-data nextcloud php occ status --output=json 2>/dev/null \
+			| grep -q '"maintenance":false.*"needsDbUpgrade":false' && exit 0; \
+		sleep 10; \
+	done; echo "nextcloud not ready after 10 minutes"; exit 1
+	$(call pp,updating nextcloud apps...)
+	docker exec -u www-data nextcloud php occ app:update --all
+	docker image prune -f
+	$(MAKE) prune-backups
+
+## prune-backups: 🧹 keep only the newest automatic backups (backups/auto-*)
+KEEP_BACKUPS?=2
+.PHONY: prune-backups
+prune-backups:
+	@ls -1d backups/auto-* 2>/dev/null | sort | head -n -$(KEEP_BACKUPS) | while read -r d; do \
+		echo "  removing $$d"; rm -rf "$$d"; \
 	done
