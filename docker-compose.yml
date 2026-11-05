@@ -3,8 +3,6 @@
 # router will route ports: [ 80, 443 ]
 
 volumes:
-  # old mariadb 10.5 (linuxserver) data, kept for rollback - no longer mounted
-  db:
   mariadb:
   nextcloud:
   wordpress:
